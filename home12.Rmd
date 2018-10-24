@@ -17,6 +17,9 @@ library(ggplot2)
 library(car)
 library(MVN)
 library(mvoutlier)
+library(nortest)
+library(corpcor)
+library(graphics)
 
 ```
 
@@ -39,10 +42,78 @@ cars$V7=factor(cars$V7, labels = model_y)
 Cars dataset consists of 99 observations of different car models. Each one of them is described by 9 different variables, 4 categorical: cylinders, car name, model year, origin, and 5 quantitative: engine displacement, horsepower, weight, acceleration, mpg.
 
 ### Univariate analysis
+1.2.a)
+The variable chosen for this analysis was the mpg or Miles Per Gallon
 
+```{r echo = FALSE}
+mpg <- gsub(".", "", cars$mpg)   # remove comma
+mpg <- as.numeric(cars$mpg)   
 
+x = mpg
+hist(mpg, freq = FALSE, col = "grey")
+xbar = mean(x)
+S = sd(x)
 
+## Normal Distribution Curve
+curve(dnorm(x,xbar,S),col = 2, add = TRUE)
 
+## Mesures of central tendency
+
+# Mean
+mean(mpg)
+# Median
+median(mpg)
+# Mode
+names(table(mpg))[table(mpg)==max(table(mpg))]
+
+## Mesure of dispersion
+sd(mpg)
+
+#Skewness test
+agostino.test(mpg)
+
+#Kurtosis test
+anscombe.test(mpg)
+
+#Normality test
+shapiro.test(mpg)
+```
+It’s possible to check from the normal distribution curve that is an unimodal distribution because it only has one peak. If the distribution was normal, then mean = median = mode. We can say that the data is positively skewed, because mode < media < mean and because the D’Agostino skewness test gives a skew value of 0.66097. If the distribution was normal the skew would be 0. Positive skew also indicates that the tail is on the right, as it shown on the curve above.
+We can also say that the distribution is not normal because the kurtosis is not 3 and because a of that the normal distribution curve is a bit flat.
+It’s also seen from the Shapiro-Wilk normality test that the distribution is not normal once the p-value needs to be above 0.05 to be considered normal and, in this case, it is a very low value (0.0001004).
+The standard deviation or dispersion of the data is not very high or very low which means that the data points are more or less well spread out over a range of values.
+
+```{r echo = FALSE}
+# Power Transformations, Box-Cox transformation to improve normality
+powerTransform(mpg)
+# and more information
+summary(powerTransform(mpg))
+#We make a variable transformation using lambda=0.27
+mpg_transform=bcPower(mpg, lambda=0.27)
+#and check if it improves normality
+#Comparing both qqplots
+par(mfrow=c(1,2))
+qqPlot(mpg, dist="norm")
+qqPlot(mpg_transform, dist="norm")
+par(mfrow=c(1,1))
+#Cheking improvement of normality
+
+#Skewness test
+agostino.test(mpg_transform)
+
+#Kurtosis test
+anscombe.test(mpg_transform)
+
+#Normality test
+shapiro.test(mpg_transform)
+
+#looking for outliers
+boxplot(mpg)
+```
+From the first qqPlot we can be sure that the distribution is not normal because of the slightly positive distribution and the soft nonpeaked distribution. 
+To improve the normality, we did the box-cox transformation to our data. However, the transformation didn’t improve much the data normality as it is shown on the qqPlot on the right. From the transformed plot we can say that the data is not normal yet. 
+It’s also possible to confirm that the distribution it isn’t normal after the transformation, from the kurtosis, skewness and normality tests. The kurtosis value decreased about 0.4, which means the normal distribution curve got a little flatter. The other two values also had a slightly fall. The skew was 0.29747 what means that the distribution got more symmetric. The normality test gave a higher value (0.009547), but it’s still far away from the minimum normality value (0.05).
+Finally, by applying the function boxplot to the mpg variable we can check that there aren’t any outliers. 
 
 ### Bivariate analysis
 ```{r include = FALSE}
@@ -123,6 +194,69 @@ mvn(cbind(carsNoOut$V4,carsNoOut$V5), mvnTest="mardia", multivariatePlot="qq")
 ```
 As we analyzed, more than 18% of the original dataset has been classified as outliers. Depends on the type of each outlier and obviously the main objectivity of our analysis, sometimes we may consider outlier removal. In case of our dataset this is not an option, since it consists of only 99 observations.  
 After normality improvement we qualified about 5% samples as the outliers, and none of them seems to be a typing mistake. They should be taken into account in further analysis.
+
+### Linear relationships analysis
+
+1.2.c)
+The variables chosen for this analysis were:
+1.mpg
+2.engine displacement
+3.horsepower
+4.weight
+5.accelaration
+
+```{r echo = FALSE}
+
+weight <- as.numeric(cars$weight)
+accelaration <-as.numeric(cars$acceleration)
+engiDisp <-as.numeric(cars$`engine displacement`)
+horsepower <-as.numeric(cars$horsepower)
+
+#Creation of a smaller table with the variables chosen
+aux_car <- cars[, c(1,3,4,5,6)]
+aux_car[,1] = mpg
+aux_car[,2] = engiDisp
+aux_car[,3] = horsepower
+aux_car[,4] = weight
+aux_car[,5] = accelaration
+```
+
+```{r echo = FALSE}
+# Matrix of pairwise correlations
+cor(aux_car)
+```
+From this matrix we can conclude that the strongest positive correlations are between the engine displacement and horsepower (0.904) and between engine displacement and weight. The strongest negative correlation is between the variables mpg-engine displacement (-0.87) and mpg-weight (-0.902).
+```{r echo = FALSE}
+# Matrix of partial correlations
+cor2pcor(cor(aux_car))
+```
+Partial correlation measures the degree of association between two random variables, with the effect of a set of controlling random variables removed.
+The stronger partial relationships are between v4 and v2 (weight and engine displacement, with 0.5160035) and between v5 and v3 (acceleration and horsepower, with -0.50845604), but in this last one is a negative relationship.
+
+```{r echo = FALSE}
+# Coefficient of determination
+r2multv <- function(x) {
+  r2s = 1-1/(diag(solve(cov(x)))*diag(cov(x)))
+  r2s
+
+}
+r2multv(aux_car)
+```
+From this data we can say that engine displacement is the best linearly explained by others (R^2 = 0.91), followed by weight (R^2 = 0.89) and horsepower (R^2 = 0.86). The worst linearly explained by the others is acceleration (R^2 = 0.67).
+
+```{r echo = FALSE}
+#The determinant of R (correlation matrix)
+det(cor(aux_car))
+```
+The determinant of the correlation matrix will equal 1.0 only if all correlations equal 0, otherwise the determinant will be less than 1. In this case the determinant is a value very small which means that almost all variables have strong correlation values.
+
+```{r echo = FALSE}
+#An eigenanalysis of matrix R
+eigen(cor(aux_car))$values
+eigenAnalysis <- princomp(cor(aux_car), cor = TRUE)
+screeplot(eigenAnalysis, npcs = 5, type = "lines")
+```
+The eigenvalues provide information about the amount of variability captured by each principal component. As we can see from these values the only variable where there is a relevant variance in on the first one (mpg). All the other variables have very low variances.
 
 
 ### 1.2.2 Permutation test
